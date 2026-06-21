@@ -2,19 +2,18 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: jenkins
-  namespace: argocd
 spec:
   project: default
-
   source:
-    repoURL: https://github.com/NeilCic/devops-lesson8-argocd.git
-    path: homework
+    repoURL: https://github.com/jenkinsci/helm-charts.git
+    path: charts/jenkins
     targetRevision: main
-
+    helm:
+      valueFiles:
+        - values.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: default
-
   syncPolicy:
     automated:
       prune: true
