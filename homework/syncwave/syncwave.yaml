@@ -1,0 +1,154 @@
+# ---------- PreSync : wave 1 ----------
+# delete-policy HookSucceeded -> the Job is removed automatically once it succeeds
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: one
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: backup
+          image: alpine:latest
+          command: ["sh", "-c", "echo 'PreSync / wave 1 -> backup database'; sleep 5"]
+---
+# ---------- PreSync : wave 2 ----------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: two
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: alpine:latest
+          command: ["sh", "-c", "echo 'PreSync / wave 2 -> run schema migration'; sleep 5"]
+---
+
+
+# ---------- Sync hook : wave 1 ----------
+# delete-policy BeforeHookCreation -> old Job is deleted right before the next run
+# (keeps the most recent one around so you can inspect it)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: three
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: maint-up
+          image: alpine:latest
+          command: ["sh", "-c", "echo 'Sync hook / wave 1 -> put up maintenance page'; sleep 3"]
+---
+# ---------- Sync resource : wave 2 (backend) ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: four
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      tier: backend
+  template:
+    metadata:
+      labels:
+        tier: backend
+    spec:
+      containers:
+        - name: main
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  selector:
+    tier: backend
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 80
+---
+# ---------- Sync resource : wave 3 (frontend, depends on backend) ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: five
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        tier: frontend
+    spec:
+      containers:
+        - name: main
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  selector:
+    tier: frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+# ---------- PostSync : wave 1 ----------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: six
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: smoke-test
+          image: alpine:latest
+          command: ["sh", "-c", "echo 'PostSync / wave 1 -> run smoke tests'; sleep 5"]
